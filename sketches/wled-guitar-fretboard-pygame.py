@@ -145,7 +145,7 @@ class GuitarFretboardVisualizer:
                 color = self.get_note_color(note, active)
                 if not active:
                     # Use 5% brightness for WLED
-                    color = tuple(max(1, c * 5 // 100) for c in color)
+                    color = tuple(max(1, c * 7 // 100) for c in color)
                 led_data.extend(color)
         return led_data
 
