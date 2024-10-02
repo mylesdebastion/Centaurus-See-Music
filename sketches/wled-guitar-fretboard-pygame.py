@@ -94,6 +94,10 @@ class GuitarFretboardVisualizer:
         print("Generating tones...")
         self.generate_tones()
         print("Initialization complete.")
+        
+        self.space_pressed = False
+        self.key_notes = set()
+        self.initial_brightness = 0.10  # 10% brightness
 
     def create_fretboard_matrix(self) -> List[List[int]]:
         print("Creating fretboard matrix...")
@@ -127,25 +131,29 @@ class GuitarFretboardVisualizer:
     def is_note_active(self, string: int, fret: int, active_notes: List[Tuple[int, int]]) -> bool:
         return any(s - 1 == string and f == fret for s, f in active_notes)
 
-    def get_note_color(self, note: int, active: bool) -> Tuple[int, int, int]:
+    def get_note_color(self, note: int, active: bool, in_chord: bool) -> Tuple[int, int, int]:
         colors = CHROMATIC_COLORS if self.color_mapping == "chromatic" else HARMONIC_COLORS
         color = colors[note]
-        if active:
+        if not self.space_pressed:
+            return tuple(int(c * self.initial_brightness) for c in color)
+        if active and in_chord:
             return color
+        elif in_chord:
+            return tuple(c * 15 // 100 for c in color)
+        elif note in self.key_notes:
+            return tuple(c * 7 // 100 for c in color)
         else:
-            # Return the color at 50% brightness for pygame visualization
-            return tuple(c // 2 for c in color)
+            return (0, 0, 0)  # Off
 
     def create_wled_data(self, active_notes: List[Tuple[int, int]]) -> List[int]:
         led_data = []
+        chord_notes = [self.matrix[s-1][f] for s, f in active_notes]
         for string in range(STRINGS):
             for fret in range(FRETS):
                 note = self.matrix[string][fret]
                 active = self.is_note_active(string, fret, active_notes)
-                color = self.get_note_color(note, active)
-                if not active:
-                    # Use 5% brightness for WLED
-                    color = tuple(max(1, c * 7 // 100) for c in color)
+                in_chord = note in chord_notes
+                color = self.get_note_color(note, active, in_chord)
                 led_data.extend(color)
         return led_data
 
@@ -159,28 +167,31 @@ class GuitarFretboardVisualizer:
         fret_width = SCREEN_WIDTH // FRETS
         string_height = SCREEN_HEIGHT // (STRINGS + 1)
         
+        chord_notes = [self.matrix[s-1][f] for s, f in active_notes]
+        
         for string in range(STRINGS):
             for fret in range(FRETS):
                 note = self.matrix[string][fret]
                 active = self.is_note_active(string, fret, active_notes)
-                color = self.get_note_color(note, active)
+                in_chord = note in chord_notes
+                color = self.get_note_color(note, active, in_chord)
                 
                 x = fret * fret_width
                 y = (string + 1) * string_height
                 center = (x + fret_width // 2, y)
                 
-                # Draw circle outline with the full brightness color
+                # Draw circle outline
                 outline_color = CHROMATIC_COLORS[note] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note]
                 pygame.draw.circle(self.screen, outline_color, center, fret_width // 3, 2)
                 
-                if active:
-                    # Fill circle for active notes
+                if color != (0, 0, 0):  # If not off
                     pygame.draw.circle(self.screen, color, center, fret_width // 3)
-                    pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
+                    if active and in_chord and self.space_pressed:
+                        pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
                 
                 # Draw note name
                 note_name = NOTE_NAMES[note]
-                text_color = (255, 255, 255) if active else outline_color
+                text_color = (255, 255, 255) if (active and in_chord and self.space_pressed) else outline_color
                 text = self.font.render(note_name, True, text_color)
                 text_rect = text.get_rect(center=center)
                 self.screen.blit(text, text_rect)
@@ -194,7 +205,7 @@ class GuitarFretboardVisualizer:
         progression = CHORD_PROGRESSIONS[self.current_progression]
         chord = progression["chords"][self.current_chord]
         
-        info_text = f"Progression (n): {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | Quit (q)"
+        info_text = f"Progression (Space) Start/Stop (n) New: {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | Quit (q)"
         text = self.font.render(info_text, True, (200, 200, 200))
         text_rect = text.get_rect()
         text_rect.center = (SCREEN_WIDTH // 2, 20)  # Center the text horizontally and position it at the top
@@ -208,13 +219,17 @@ class GuitarFretboardVisualizer:
                 if event.key == pygame.K_n:
                     self.current_progression = (self.current_progression + 1) % len(CHORD_PROGRESSIONS)
                     self.current_chord = 0
-                    # Play the first chord of the new progression
-                    new_chord = CHORD_PROGRESSIONS[self.current_progression]["chords"][self.current_chord]
-                    self.play_chord(new_chord["notes"])
+                    self.update_key_notes()
                 elif event.key == pygame.K_c:
                     self.color_mapping = "harmonic" if self.color_mapping == "chromatic" else "chromatic"
                 elif event.key == pygame.K_q:
                     return False
+                elif event.key == pygame.K_SPACE:
+                    self.space_pressed = not self.space_pressed
+                    if self.space_pressed:
+                        # Play the current chord
+                        chord = CHORD_PROGRESSIONS[self.current_progression]["chords"][self.current_chord]
+                        self.play_chord(chord["notes"])
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.handle_mouse_click(event.pos)
         return True
@@ -237,15 +252,22 @@ class GuitarFretboardVisualizer:
     def highlight_and_send_led(self, string, fret):
         led_data = [0] * (FRETS * STRINGS * 3)  # Initialize all LEDs as off
         note = self.matrix[string][fret]
-        color = self.get_note_color(note, True)
+        color = self.get_note_color(note, True, True)
         index = (string * FRETS + fret) * 3
         led_data[index:index+3] = color
         self.send_udp_packet(led_data)
 
+    def update_key_notes(self):
+        self.key_notes = set()
+        progression = CHORD_PROGRESSIONS[self.current_progression]
+        for chord in progression["chords"]:
+            for string, fret in chord["notes"]:
+                self.key_notes.add(self.matrix[string-1][fret])
+
     def run(self):
         print("Starting main loop...")
         running = True
-        last_chord = None
+        self.update_key_notes()  # Initialize key notes
         while running:
             running = self.handle_events()
             
@@ -253,11 +275,6 @@ class GuitarFretboardVisualizer:
             
             progression = CHORD_PROGRESSIONS[self.current_progression]
             chord = progression["chords"][self.current_chord]
-            
-            # Play chord if it has changed
-            if chord != last_chord:
-                self.play_chord(chord["notes"])
-                last_chord = chord
             
             self.draw_fretboard(chord["notes"])
             self.draw_info()
@@ -268,9 +285,12 @@ class GuitarFretboardVisualizer:
             pygame.display.flip()
             self.clock.tick(FPS)
             
-            if time.time() - self.last_chord_change > 5:
+            if self.space_pressed and time.time() - self.last_chord_change > 5:
                 self.current_chord = (self.current_chord + 1) % len(progression["chords"])
                 self.last_chord_change = time.time()
+                # Play the new chord
+                new_chord = progression["chords"][self.current_chord]
+                self.play_chord(new_chord["notes"])
 
         print("Main loop ended. Quitting Pygame...")
         pygame.quit()
