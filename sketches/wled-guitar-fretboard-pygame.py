@@ -132,18 +132,33 @@ class GuitarFretboardVisualizer:
         return any(s - 1 == string and f == fret for s, f in active_notes)
 
     def get_note_color(self, note: int, active: bool, in_chord: bool) -> Tuple[int, int, int]:
+        # Determine the base color for the note based on the current color mapping
         colors = CHROMATIC_COLORS if self.color_mapping == "chromatic" else HARMONIC_COLORS
         color = colors[note]
+        
+        # If space is not pressed, we're in the initial state
         if not self.space_pressed:
+            # Return the color at initial brightness (50%)
             return tuple(int(c * self.initial_brightness) for c in color)
+        
+        # Space is pressed, we're in chord playing mode
+        # Check various conditions to determine the appropriate brightness
         if active and in_chord:
+            # This is an active note in the current chord
+            # Display at full brightness (100%)
             return color
         elif in_chord:
-            return tuple(c * 15 // 100 for c in color)
-        elif note in self.key_notes:
+            # This note is part of the current chord, but not the active position
+            # Display at 25% brightness
             return tuple(c * 7 // 100 for c in color)
+        elif note in self.key_notes:
+            # This note is in the key of the current progression, but not in the current chord
+            # Display at 5% brightness
+            return tuple(c * 1 // 100 for c in color)
         else:
-            return (0, 0, 0)  # Off
+            # This note is not in the key of the current progression
+            # Turn it off (black)
+            return (0, 0, 0)
 
     def create_wled_data(self, active_notes: List[Tuple[int, int]]) -> List[int]:
         led_data = []
