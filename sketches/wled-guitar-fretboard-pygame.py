@@ -140,6 +140,10 @@ class GuitarFretboardVisualizer:
         return any(s - 1 == string and f == fret for s, f in active_notes)
 
     def get_note_color(self, note: int, active: bool, in_chord: bool) -> Tuple[int, int, int]:
+        # Highlight MIDI input notes in white
+        if note % 12 in self.midi_notes:
+            return (255, 255, 255)  # White color for MIDI notes
+
         # Determine the base color for the note based on the current color mapping
         colors = CHROMATIC_COLORS if self.color_mapping == "chromatic" else HARMONIC_COLORS
         color = colors[note]
@@ -167,10 +171,6 @@ class GuitarFretboardVisualizer:
             # This note is not in the key of the current progression
             # Turn it off (black)
             return (0, 0, 0)
-        
-        # Add MIDI input highlighting
-        if note % 12 in self.midi_notes:
-            return (255, 255, 255)  # Highlight MIDI input notes in white
 
     def create_wled_data(self, active_notes: List[Tuple[int, int]]) -> List[int]:
         led_data = []
@@ -181,6 +181,11 @@ class GuitarFretboardVisualizer:
                 active = self.is_note_active(string, fret, active_notes)
                 in_chord = note in chord_notes
                 color = self.get_note_color(note, active, in_chord)
+                
+                # Highlight MIDI notes in white
+                if note % 12 in self.midi_notes:
+                    color = (255, 255, 255)  # White color for MIDI notes
+                
                 led_data.extend(color)
         return led_data
 
