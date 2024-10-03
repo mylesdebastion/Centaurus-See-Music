@@ -4,7 +4,9 @@ import time
 import math
 from typing import List, Tuple
 import numpy as np
-import pygame.gfxdraw  # Add this import at the top of your file
+import pygame.gfxdraw
+import mido
+import threading
 
 # WLED Controller settings
 WLED_IP = "192.168.8.144"
@@ -97,7 +99,13 @@ class GuitarFretboardVisualizer:
         
         self.space_pressed = False
         self.key_notes = set()
-        self.initial_brightness = 0.10  # 10% brightness
+        self.initial_brightness = 0.50  # 50% brightness
+        self.midi_input = None
+        self.midi_notes = set()
+        self.midi_devices = mido.get_input_names()
+        self.current_midi_device_index = -1
+        self.last_midi_message = "No message"
+        self.setup_midi()
 
     def create_fretboard_matrix(self) -> List[List[int]]:
         print("Creating fretboard matrix...")
@@ -150,15 +158,19 @@ class GuitarFretboardVisualizer:
         elif in_chord:
             # This note is part of the current chord, but not the active position
             # Display at 25% brightness
-            return tuple(c * 7 // 100 for c in color)
+            return tuple(c * 25 // 100 for c in color)
         elif note in self.key_notes:
             # This note is in the key of the current progression, but not in the current chord
             # Display at 5% brightness
-            return tuple(c * 1 // 100 for c in color)
+            return tuple(c * 5 // 100 for c in color)
         else:
             # This note is not in the key of the current progression
             # Turn it off (black)
             return (0, 0, 0)
+        
+        # Add MIDI input highlighting
+        if note % 12 in self.midi_notes:
+            return (255, 255, 255)  # Highlight MIDI input notes in white
 
     def create_wled_data(self, active_notes: List[Tuple[int, int]]) -> List[int]:
         led_data = []
@@ -204,6 +216,10 @@ class GuitarFretboardVisualizer:
                     if active and in_chord and self.space_pressed:
                         pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
                 
+                # Add MIDI input highlighting
+                if note % 12 in self.midi_notes:
+                    pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
+                
                 # Draw note name
                 note_name = NOTE_NAMES[note]
                 text_color = (255, 255, 255) if (active and in_chord and self.space_pressed) else outline_color
@@ -220,7 +236,10 @@ class GuitarFretboardVisualizer:
         progression = CHORD_PROGRESSIONS[self.current_progression]
         chord = progression["chords"][self.current_chord]
         
-        info_text = f"Progression (Space) Start/Stop (n) New: {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | Quit (q)"
+        midi_device = self.midi_devices[self.current_midi_device_index] if self.midi_input else "None"
+        midi_info = f"MIDI Input Device [M]: {midi_device} [{self.last_midi_message}]"
+        
+        info_text = f"Progression (Space) Start/Stop (n) New: {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | {midi_info} | Quit (q)"
         text = self.font.render(info_text, True, (200, 200, 200))
         text_rect = text.get_rect()
         text_rect.center = (SCREEN_WIDTH // 2, 20)  # Center the text horizontally and position it at the top
@@ -237,6 +256,8 @@ class GuitarFretboardVisualizer:
                     self.update_key_notes()
                 elif event.key == pygame.K_c:
                     self.color_mapping = "harmonic" if self.color_mapping == "chromatic" else "chromatic"
+                elif event.key == pygame.K_m:
+                    self.setup_midi()  # Cycle to the next MIDI input device
                 elif event.key == pygame.K_q:
                     return False
                 elif event.key == pygame.K_SPACE:
@@ -247,6 +268,16 @@ class GuitarFretboardVisualizer:
                         self.play_chord(chord["notes"])
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.handle_mouse_click(event.pos)
+        
+        # Add MIDI input handling
+        if self.midi_input:
+            for message in self.midi_input.iter_pending():
+                if message.type == 'note_on' and message.velocity > 0:
+                    note = message.note % 12
+                    self.midi_notes.add(note)
+                    self.play_note(note)
+                elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
+                    self.midi_notes.discard(message.note % 12)
         return True
 
     def handle_mouse_click(self, pos):
@@ -278,6 +309,31 @@ class GuitarFretboardVisualizer:
         for chord in progression["chords"]:
             for string, fret in chord["notes"]:
                 self.key_notes.add(self.matrix[string-1][fret])
+
+    def setup_midi(self):
+        if self.midi_devices:
+            self.current_midi_device_index = (self.current_midi_device_index + 1) % len(self.midi_devices)
+            device_name = self.midi_devices[self.current_midi_device_index]
+            try:
+                if self.midi_input:
+                    self.midi_input.close()
+                self.midi_input = mido.open_input(device_name)
+                print(f"Connected to MIDI input: {device_name}")
+                
+                # Start MIDI listening thread
+                threading.Thread(target=self.midi_listener, daemon=True).start()
+            except Exception as e:
+                print(f"Error setting up MIDI: {e}")
+                self.midi_input = None
+        else:
+            print("No MIDI input ports available.")
+
+    def midi_listener(self):
+        for message in self.midi_input:
+            if message.type == 'note_on' and message.velocity > 0:
+                self.midi_notes.add(message.note % 12)
+            elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
+                self.midi_notes.discard(message.note % 12)
 
     def run(self):
         print("Starting main loop...")
