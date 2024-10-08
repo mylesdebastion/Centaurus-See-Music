@@ -9,7 +9,7 @@ import mido
 import threading
 
 # WLED Controller settings
-WLED_IP = "192.168.8.144"
+WLED_IP = "192.168.0.113"
 WLED_PORT = 21324  # Default WLED UDP port
 
 # Guitar fretboard settings
@@ -106,6 +106,7 @@ class GuitarFretboardVisualizer:
         self.current_midi_device_index = -1
         self.last_midi_message = "No message"
         self.setup_midi()
+        self.perform_mode = False
 
     def create_fretboard_matrix(self) -> List[List[int]]:
         print("Creating fretboard matrix...")
@@ -140,6 +141,13 @@ class GuitarFretboardVisualizer:
         return any(s - 1 == string and f == fret for s, f in active_notes)
 
     def get_note_color(self, note: int, active: bool, in_chord: bool) -> Tuple[int, int, int]:
+        if self.perform_mode:
+            # In perform mode, only show active MIDI notes
+            if note % 12 in self.midi_notes:
+                return CHROMATIC_COLORS[note] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note]
+            else:
+                return (0, 0, 0)  # Off
+
         # Highlight MIDI input notes in white
         if note % 12 in self.midi_notes:
             return (255, 255, 255)  # White color for MIDI notes
@@ -182,9 +190,12 @@ class GuitarFretboardVisualizer:
                 in_chord = note in chord_notes
                 color = self.get_note_color(note, active, in_chord)
                 
-                # Highlight MIDI notes in white
-                if note % 12 in self.midi_notes:
-                    color = (255, 255, 255)  # White color for MIDI notes
+                if self.perform_mode:
+                    # In perform mode, only show active MIDI notes
+                    if note % 12 in self.midi_notes:
+                        color = CHROMATIC_COLORS[note] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note]
+                    else:
+                        color = (0, 0, 0)  # Off
                 
                 led_data.extend(color)
         return led_data
@@ -212,25 +223,32 @@ class GuitarFretboardVisualizer:
                 y = (string + 1) * string_height
                 center = (x + fret_width // 2, y)
                 
-                # Draw circle outline
-                outline_color = CHROMATIC_COLORS[note] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note]
-                pygame.draw.circle(self.screen, outline_color, center, fret_width // 3, 2)
-                
-                if color != (0, 0, 0):  # If not off
-                    pygame.draw.circle(self.screen, color, center, fret_width // 3)
-                    if active and in_chord and self.space_pressed:
+                if self.perform_mode:
+                    # In perform mode, only show active MIDI notes
+                    if note % 12 in self.midi_notes:
+                        color = CHROMATIC_COLORS[note] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note]
+                        pygame.draw.circle(self.screen, color, center, fret_width // 3)
                         pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
-                
-                # Add MIDI input highlighting
-                if note % 12 in self.midi_notes:
-                    pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
-                
-                # Draw note name
-                note_name = NOTE_NAMES[note]
-                text_color = (255, 255, 255) if (active and in_chord and self.space_pressed) else outline_color
-                text = self.font.render(note_name, True, text_color)
-                text_rect = text.get_rect(center=center)
-                self.screen.blit(text, text_rect)
+                else:
+                    # Normal mode drawing
+                    outline_color = CHROMATIC_COLORS[note] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note]
+                    pygame.draw.circle(self.screen, outline_color, center, fret_width // 3, 2)
+                    
+                    if color != (0, 0, 0):  # If not off
+                        pygame.draw.circle(self.screen, color, center, fret_width // 3)
+                        if active and in_chord and self.space_pressed:
+                            pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
+                    
+                    # Add MIDI input highlighting
+                    if note % 12 in self.midi_notes:
+                        pygame.draw.circle(self.screen, (255, 255, 255), center, fret_width // 4, 2)
+                    
+                    # Draw note name
+                    note_name = NOTE_NAMES[note]
+                    text_color = (255, 255, 255) if (active and in_chord and self.space_pressed) else outline_color
+                    text = self.font.render(note_name, True, text_color)
+                    text_rect = text.get_rect(center=center)
+                    self.screen.blit(text, text_rect)
 
         # Draw fret numbers
         for fret in range(FRETS):
@@ -244,7 +262,8 @@ class GuitarFretboardVisualizer:
         midi_device = self.midi_devices[self.current_midi_device_index] if self.midi_input else "None"
         midi_info = f"MIDI Input Device [M]: {midi_device} [{self.last_midi_message}]"
         
-        info_text = f"Progression (Space) Start/Stop (n) New: {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | {midi_info} | Quit (q)"
+        perform_mode_text = "Perform Mode: ON" if self.perform_mode else "Perform Mode: OFF"
+        info_text = f"Progression (Space) Start/Stop (n) New: {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | {midi_info} | {perform_mode_text} (p) | Quit (q)"
         text = self.font.render(info_text, True, (200, 200, 200))
         text_rect = text.get_rect()
         text_rect.center = (SCREEN_WIDTH // 2, 20)  # Center the text horizontally and position it at the top
@@ -271,6 +290,9 @@ class GuitarFretboardVisualizer:
                         # Play the current chord
                         chord = CHORD_PROGRESSIONS[self.current_progression]["chords"][self.current_chord]
                         self.play_chord(chord["notes"])
+                elif event.key == pygame.K_p:
+                    self.perform_mode = not self.perform_mode
+                    print(f"Perform mode: {'On' if self.perform_mode else 'Off'}")
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.handle_mouse_click(event.pos)
         
