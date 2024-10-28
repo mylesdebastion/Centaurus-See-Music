@@ -7,6 +7,7 @@ import numpy as np
 import pygame.gfxdraw
 import mido
 import threading
+# pip install python-rtmidi
 
 # WLED Controller settings
 WLED_IP = "192.168.0.113"
