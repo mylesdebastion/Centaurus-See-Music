@@ -108,6 +108,7 @@ class GuitarFretboardVisualizer:
         self.last_midi_message = "No message"
         self.setup_midi()
         self.perform_mode = False
+        self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def create_fretboard_matrix(self) -> List[List[int]]:
         print("Creating fretboard matrix...")
@@ -204,8 +205,7 @@ class GuitarFretboardVisualizer:
     def send_udp_packet(self, data: List[int]):
         packet = bytearray([2, 255])  # WARLS protocol with 255 as the second byte
         packet.extend(data)
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.sendto(packet, (WLED_IP, WLED_PORT))
+        self.udp_socket.sendto(packet, (WLED_IP, WLED_PORT))
 
     def draw_fretboard(self, active_notes: List[Tuple[int, int]]):
         fret_width = SCREEN_WIDTH // FRETS
@@ -367,32 +367,38 @@ class GuitarFretboardVisualizer:
         print("Starting main loop...")
         running = True
         self.update_key_notes()  # Initialize key notes
-        while running:
-            running = self.handle_events()
-            
-            self.screen.fill((0, 0, 0))
-            
-            progression = CHORD_PROGRESSIONS[self.current_progression]
-            chord = progression["chords"][self.current_chord]
-            
-            self.draw_fretboard(chord["notes"])
-            self.draw_info()
-            
-            led_data = self.create_wled_data(chord["notes"])
-            self.send_udp_packet(led_data)
-            
-            pygame.display.flip()
-            self.clock.tick(FPS)
-            
-            if self.space_pressed and time.time() - self.last_chord_change > 5:
-                self.current_chord = (self.current_chord + 1) % len(progression["chords"])
-                self.last_chord_change = time.time()
-                # Play the new chord
-                new_chord = progression["chords"][self.current_chord]
-                self.play_chord(new_chord["notes"])
-
-        print("Main loop ended. Quitting Pygame...")
-        pygame.quit()
+        try:
+            while running:
+                running = self.handle_events()
+                
+                self.screen.fill((0, 0, 0))
+                
+                progression = CHORD_PROGRESSIONS[self.current_progression]
+                chord = progression["chords"][self.current_chord]
+                
+                self.draw_fretboard(chord["notes"])
+                self.draw_info()
+                
+                led_data = self.create_wled_data(chord["notes"])
+                self.send_udp_packet(led_data)
+                
+                pygame.display.flip()
+                self.clock.tick(FPS)
+                
+                if self.space_pressed and time.time() - self.last_chord_change > 5:
+                    self.current_chord = (self.current_chord + 1) % len(progression["chords"])
+                    self.last_chord_change = time.time()
+                    # Play the new chord
+                    new_chord = progression["chords"][self.current_chord]
+                    self.play_chord(new_chord["notes"])
+        finally:
+            print("Closing UDP socket...")
+            self.udp_socket.close()
+            if self.midi_input:
+                print("Closing MIDI input...")
+                self.midi_input.close()
+            print("Main loop ended. Quitting Pygame...")
+            pygame.quit()
 
 if __name__ == "__main__":
     print("Script started.")
