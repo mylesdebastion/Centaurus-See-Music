@@ -77,6 +77,12 @@ CHORD_PROGRESSIONS = [
     }
 ]
 
+TUNINGS = {
+    "E Standard": [4, 9, 2, 7, 11, 4],    # E A D G B E
+    "D Standard": [2, 7, 0, 5, 9, 2],     # D G C F A D
+    "Drop D": [2, 9, 2, 7, 11, 4],        # D A D G B E
+}
+
 class GuitarFretboardVisualizer:
     def __init__(self):
         print("Initializing GuitarFretboardVisualizer...")
@@ -91,6 +97,7 @@ class GuitarFretboardVisualizer:
         self.current_progression = 0
         self.current_chord = 0
         self.color_mapping = "chromatic"
+        self.current_tuning = "E Standard"
         self.matrix = self.create_fretboard_matrix()
         
         self.last_chord_change = time.time()
@@ -111,8 +118,21 @@ class GuitarFretboardVisualizer:
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def create_fretboard_matrix(self) -> List[List[int]]:
-        print("Creating fretboard matrix...")
-        return [[(open_note + fret) % 12 for fret in range(FRETS)] for open_note in STANDARD_TUNING]
+        print(f"Creating fretboard matrix for {self.current_tuning}...")
+        return [[
+            (open_note + fret) % 12 
+            for fret in range(FRETS)
+        ] for open_note in TUNINGS[self.current_tuning]]
+
+    def cycle_tuning(self):
+        # Get list of tunings and find current index
+        tunings = list(TUNINGS.keys())
+        current_index = tunings.index(self.current_tuning)
+        # Cycle to next tuning
+        self.current_tuning = tunings[(current_index + 1) % len(tunings)]
+        # Update the fretboard matrix for new tuning
+        self.matrix = self.create_fretboard_matrix()
+        print(f"Switched to {self.current_tuning} tuning")
 
     def generate_tones(self):
         self.tones = {}
@@ -263,11 +283,15 @@ class GuitarFretboardVisualizer:
         midi_device = self.midi_devices[self.current_midi_device_index] if self.midi_input else "None"
         midi_info = f"MIDI Input Device [M]: {midi_device} [{self.last_midi_message}]"
         
-        perform_mode_text = "Perform Mode: ON" if self.perform_mode else "Perform Mode: OFF"
-        info_text = f"Progression (Space) Start/Stop (n) New: {progression['name']} | Chord: {chord['name']} | Mapping (c): {self.color_mapping.capitalize()} | {midi_info} | {perform_mode_text} (p) | Quit (q)"
+        info_text = (f"Progression (Space) Start/Stop (n) New: {progression['name']} | "
+                    f"Chord: {chord['name']} | "
+                    f"Mapping (c): {self.color_mapping.capitalize()} | "
+                    f"Tuning (t): {self.current_tuning} | "
+                    f"{midi_info} | "
+                    f"Quit (q)")
         text = self.font.render(info_text, True, (200, 200, 200))
         text_rect = text.get_rect()
-        text_rect.center = (SCREEN_WIDTH // 2, 20)  # Center the text horizontally and position it at the top
+        text_rect.center = (SCREEN_WIDTH // 2, 20)
         self.screen.blit(text, text_rect)
 
     def handle_events(self):
@@ -282,18 +306,16 @@ class GuitarFretboardVisualizer:
                 elif event.key == pygame.K_c:
                     self.color_mapping = "harmonic" if self.color_mapping == "chromatic" else "chromatic"
                 elif event.key == pygame.K_m:
-                    self.setup_midi()  # Cycle to the next MIDI input device
+                    self.setup_midi()
+                elif event.key == pygame.K_t:
+                    self.cycle_tuning()
                 elif event.key == pygame.K_q:
                     return False
                 elif event.key == pygame.K_SPACE:
                     self.space_pressed = not self.space_pressed
                     if self.space_pressed:
-                        # Play the current chord
                         chord = CHORD_PROGRESSIONS[self.current_progression]["chords"][self.current_chord]
                         self.play_chord(chord["notes"])
-                elif event.key == pygame.K_p:
-                    self.perform_mode = not self.perform_mode
-                    print(f"Perform mode: {'On' if self.perform_mode else 'Off'}")
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.handle_mouse_click(event.pos)
         
