@@ -6,7 +6,7 @@ import pygame.gfxdraw
 import mido
 
 # WLED Controller settings
-WLED_IP = "192.168.8.145"
+WLED_IP = "192.168.8.106"
 WLED_PORT = 21324  # Default WLED UDP port
 
 # Screen settings
@@ -51,6 +51,8 @@ class PianoVisualizer:
         pygame.display.set_caption("Piano Visualizer")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 20)
+        
+        self.num_leds = 144  # or whatever number of LEDs you have
         
         self.color_mapping = "chromatic"
         self.initial_brightness = 0.50
@@ -145,22 +147,30 @@ class PianoVisualizer:
                 x += white_key_width
 
     def get_note_color(self, note: int) -> Tuple[int, int, int]:
-        # If note is active (in midi_notes), return its color
-        if note % 12 in self.midi_notes:
-            if self.color_mapping == "chromatic":
-                return CHROMATIC_COLORS[note % 12]
-            else:
-                return HARMONIC_COLORS[note % 12]
+        base_color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
         
-        # If note is not active, return black (off)
-        return (0, 0, 0)
+        # Check if any note in the same pitch class (across octaves) is active
+        active_pitch_classes = {n % 12 for n in self.midi_notes}
+        if note % 12 in active_pitch_classes:
+            return tuple(min(int(c * 1.5), 255) for c in base_color)
+        else:
+            return tuple(int(c * 0.1) for c in base_color)
 
-    def create_wled_data(self) -> List[int]:
-        led_data = []
-        for note in range(TOTAL_KEYS):
-            color = self.get_note_color(note)
-            led_data.extend(color)
-        return led_data
+    def create_wled_data(self) -> bytes:
+        data = []
+        # Assuming MIDI notes start at 21 (A0) and end at 108 (C8)
+        # Map each LED to its corresponding MIDI note
+        for led in range(self.num_leds):
+            note = led + 21  # Start from A0 (MIDI note 21)
+            if note <= 108:  # Up to C8 (MIDI note 108)
+                color = self.get_note_color(note)
+                data.extend(color)
+        
+        # Fill any remaining LEDs with black
+        remaining_leds = self.num_leds - len(data) // 3
+        data.extend([0, 0, 0] * remaining_leds)
+        
+        return bytes(data)
 
     def send_udp_packet(self, data: List[int]):
         packet = bytearray([2, 255])  # WARLS protocol with 255 as the second byte
