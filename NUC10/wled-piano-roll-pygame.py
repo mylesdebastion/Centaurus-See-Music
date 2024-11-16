@@ -76,9 +76,12 @@ class PianoVisualizer:
         for octave in range(OCTAVES):
             for key in WHITE_KEYS:
                 note = octave * 12 + key
-                color = (255, 255, 255)  # Default white
-                if note % 12 in self.midi_notes:
-                    color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
+                base_color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
+                
+                if note in self.midi_notes:
+                    color = tuple(min(int(c * 1.5), 255) for c in base_color)  # 150% brightness for active
+                else:
+                    color = tuple(int(c * 0.5) for c in base_color)  # 50% brightness for inactive white keys
                 
                 pygame.draw.rect(self.screen, color, 
                                (x, SCREEN_HEIGHT - white_key_height, 
@@ -100,12 +103,15 @@ class PianoVisualizer:
         x = 0
         for octave in range(OCTAVES):
             for i, key in enumerate(WHITE_KEYS):
-                if i < len(WHITE_KEYS) - 1:  # Don't check after last white key
+                if i < len(WHITE_KEYS) - 1:
                     if WHITE_KEYS[i + 1] - WHITE_KEYS[i] == 2:
                         note = octave * 12 + key + 1
-                        color = (0, 0, 0)  # Default black
-                        if note % 12 in self.midi_notes:
-                            color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
+                        base_color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
+                        
+                        if note in self.midi_notes:
+                            color = tuple(min(int(c * 1.5), 255) for c in base_color)  # 150% brightness for active
+                        else:
+                            color = tuple(int(c * 0.3) for c in base_color)  # 30% brightness for inactive black keys
                         
                         pygame.draw.rect(self.screen, color,
                                        (x + white_key_width - black_key_width/2,
@@ -129,8 +135,7 @@ class PianoVisualizer:
                         if (black_key_x < pos[0] < black_key_x + black_key_width and
                             SCREEN_HEIGHT - white_key_height < pos[1] < SCREEN_HEIGHT - white_key_height + black_key_height):
                             note = octave * 12 + key + 1
-                            self.midi_notes.add(note % 12)
-                            pygame.time.set_timer(pygame.USEREVENT, 500)
+                            self.midi_notes.add(note)  # Store full note number, not modulo 12
                             return
                 x += white_key_width
         
@@ -141,8 +146,7 @@ class PianoVisualizer:
                 if (x < pos[0] < x + white_key_width and
                     SCREEN_HEIGHT - white_key_height < pos[1] < SCREEN_HEIGHT):
                     note = octave * 12 + key
-                    self.midi_notes.add(note % 12)
-                    pygame.time.set_timer(pygame.USEREVENT, 500)
+                    self.midi_notes.add(note)  # Store full note number, not modulo 12
                     return
                 x += white_key_width
 
@@ -202,19 +206,16 @@ class PianoVisualizer:
                     return False
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.handle_mouse_click(event.pos)
-            elif event.type == pygame.USEREVENT:
-                # Clear temporary notes from mouse clicks
-                self.midi_notes.clear()
-                pygame.time.set_timer(pygame.USEREVENT, 0)  # Disable the timer
+            elif event.type == pygame.MOUSEBUTTONUP:
+                self.midi_notes.clear()  # Clear all notes on mouse release
         
         # Handle MIDI input
         if self.midi_input:
             for message in self.midi_input.iter_pending():
                 if message.type == 'note_on' and message.velocity > 0:
-                    note = message.note % 12
-                    self.midi_notes.add(note)
+                    self.midi_notes.add(message.note)  # Store full note number
                 elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
-                    self.midi_notes.discard(message.note % 12)
+                    self.midi_notes.discard(message.note)
         return True
 
     def setup_midi(self):
