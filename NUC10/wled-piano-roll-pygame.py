@@ -1,6 +1,7 @@
 import pygame
 import socket
 import time
+import threading
 from typing import List, Tuple
 import pygame.gfxdraw
 import mido
