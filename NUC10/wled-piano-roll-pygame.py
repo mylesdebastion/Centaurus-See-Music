@@ -220,29 +220,87 @@ class PianoVisualizer:
         return True
 
     def setup_midi(self):
-        if self.midi_devices:
-            self.current_midi_device_index = (self.current_midi_device_index + 1) % len(self.midi_devices)
-            device_name = self.midi_devices[self.current_midi_device_index]
-            try:
+        try:
+            # Store current devices
+            new_devices = mido.get_input_names()
+            
+            # Update device list
+            self.midi_devices = new_devices
+            
+            if self.midi_devices:
+                # Safely close existing MIDI input first
                 if self.midi_input:
-                    self.midi_input.close()
-                self.midi_input = mido.open_input(device_name)
-                print(f"Connected to MIDI input: {device_name}")
+                    try:
+                        self.midi_input.close()
+                        self.midi_input = None
+                        time.sleep(0.1)  # Give it time to close
+                    except:
+                        pass  # Ignore errors when closing
                 
-                # Start MIDI listening thread
-                threading.Thread(target=self.midi_listener, daemon=True).start()
-            except Exception as e:
-                print(f"Error setting up MIDI: {e}")
+                # Calculate new device index
+                if self.current_midi_device_index >= len(self.midi_devices) - 1:
+                    self.current_midi_device_index = 0
+                else:
+                    self.current_midi_device_index += 1
+                
+                try:
+                    device_name = self.midi_devices[self.current_midi_device_index]
+                    self.midi_input = mido.open_input(device_name)
+                    self.last_midi_message = f"Connected to: {device_name}"
+                    print(f"Connected to MIDI input: {device_name}")
+                    
+                    # Start MIDI listening thread
+                    midi_thread = threading.Thread(target=self.midi_listener, daemon=True)
+                    midi_thread.start()
+                    
+                except Exception as e:
+                    print(f"Error opening MIDI device: {e}")
+                    self.midi_input = None
+                    self.last_midi_message = "Failed to connect"
+                    self.current_midi_device_index = -1
+            else:
                 self.midi_input = None
-        else:
-            print("No MIDI input ports available.")
+                self.last_midi_message = "No MIDI devices found"
+                self.current_midi_device_index = -1
+                print("No MIDI input ports available.")
+                
+        except Exception as e:
+            print(f"Error in MIDI setup: {e}")
+            self.midi_input = None
+            self.last_midi_message = "MIDI setup error"
+            self.current_midi_device_index = -1
+
+    def get_note_name(self, midi_note: int) -> str:
+        note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        note = note_names[midi_note % 12]
+        octave = (midi_note // 12) - 1  # MIDI note 60 is middle C (C4)
+        return f"{note}{octave}"
 
     def midi_listener(self):
-        for message in self.midi_input:
-            if message.type == 'note_on' and message.velocity > 0:
-                self.midi_notes.add(message.note % 12)
-            elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
-                self.midi_notes.discard(message.note % 12)
+        try:
+            while self.midi_input:  # Check if midi_input exists
+                try:
+                    for message in self.midi_input.iter_pending():
+                        # Only update last_midi_message for note-related messages
+                        if message.type in ['note_on', 'note_off']:
+                            note_name = self.get_note_name(message.note)
+                            self.last_midi_message = f"{str(message)} ({note_name})"
+                        
+                        if message.type == 'note_on' and message.velocity > 0:
+                            self.midi_notes.add(message.note)
+                        elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
+                            self.midi_notes.discard(message.note)
+                    time.sleep(0.001)  # Small sleep to prevent CPU hogging
+                except Exception as e:
+                    print(f"Error in MIDI listener: {e}")
+                    self.last_midi_message = f"Error: {str(e)}"
+                    break
+        except Exception as e:
+            print(f"MIDI listener thread error: {e}")
+            self.last_midi_message = f"Thread Error: {str(e)}"
+        finally:
+            print("MIDI listener thread ended")
+            self.last_midi_message = "MIDI disconnected"
 
     def run(self):
         print("Starting main loop...")
