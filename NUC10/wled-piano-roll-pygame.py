@@ -79,10 +79,11 @@ class PianoVisualizer:
                 note = octave * 12 + key
                 base_color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
                 
-                if note in self.midi_notes:
+                # Check if any note of this pitch class is active
+                if note % 12 in self.midi_notes:
                     color = tuple(min(int(c * 1.5), 255) for c in base_color)  # 150% brightness for active
                 else:
-                    color = tuple(int(c * 0.5) for c in base_color)  # 50% brightness for inactive white keys
+                    color = tuple(int(c * 0.5) for c in base_color)  # 50% brightness for inactive
                 
                 pygame.draw.rect(self.screen, color, 
                                (x, SCREEN_HEIGHT - white_key_height, 
@@ -109,16 +110,18 @@ class PianoVisualizer:
                         note = octave * 12 + key + 1
                         base_color = CHROMATIC_COLORS[note % 12] if self.color_mapping == "chromatic" else HARMONIC_COLORS[note % 12]
                         
-                        if note in self.midi_notes:
+                        if note % 12 in self.midi_notes:
                             color = tuple(min(int(c * 1.5), 255) for c in base_color)  # 150% brightness for active
                         else:
-                            color = tuple(int(c * 0.3) for c in base_color)  # 30% brightness for inactive black keys
+                            color = tuple(int(c * 0.3) for c in base_color)  # 30% brightness for inactive
                         
                         pygame.draw.rect(self.screen, color,
                                        (x + white_key_width - black_key_width/2,
                                         SCREEN_HEIGHT - white_key_height,
                                         black_key_width, black_key_height))
                 x += white_key_width
+
+        pygame.display.flip()
 
     def handle_mouse_click(self, pos):
         white_key_width = SCREEN_WIDTH // (len(WHITE_KEYS) * OCTAVES)
@@ -135,8 +138,9 @@ class PianoVisualizer:
                         black_key_x = x + white_key_width - black_key_width/2
                         if (black_key_x < pos[0] < black_key_x + black_key_width and
                             SCREEN_HEIGHT - white_key_height < pos[1] < SCREEN_HEIGHT - white_key_height + black_key_height):
-                            note = octave * 12 + key + 1
-                            self.midi_notes.add(note)  # Store full note number, not modulo 12
+                            note = (key + 1) % 12  # Just store the note class (0-11)
+                            self.midi_notes.add(note)
+                            print(f"Clicked black key: note {note}")  # Debug print
                             return
                 x += white_key_width
         
@@ -146,8 +150,9 @@ class PianoVisualizer:
             for key in WHITE_KEYS:
                 if (x < pos[0] < x + white_key_width and
                     SCREEN_HEIGHT - white_key_height < pos[1] < SCREEN_HEIGHT):
-                    note = octave * 12 + key
-                    self.midi_notes.add(note)  # Store full note number, not modulo 12
+                    note = key % 12  # Just store the note class (0-11)
+                    self.midi_notes.add(note)
+                    print(f"Clicked white key: note {note}")  # Debug print
                     return
                 x += white_key_width
 
@@ -208,15 +213,18 @@ class PianoVisualizer:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.handle_mouse_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONUP:
-                self.midi_notes.clear()  # Clear all notes on mouse release
+                self.midi_notes.clear()
         
         # Handle MIDI input
         if self.midi_input:
             for message in self.midi_input.iter_pending():
                 if message.type == 'note_on' and message.velocity > 0:
-                    self.midi_notes.add(message.note)  # Store full note number
+                    self.midi_notes.add(message.note % 12)  # Store note class (0-11)
+                    print(f"Note ON: {message.note} -> {message.note % 12}")
                 elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
-                    self.midi_notes.discard(message.note)
+                    self.midi_notes.discard(message.note % 12)
+                    print(f"Note OFF: {message.note} -> {message.note % 12}")
+        
         return True
 
     def setup_midi(self):
@@ -278,7 +286,7 @@ class PianoVisualizer:
 
     def midi_listener(self):
         try:
-            while self.midi_input:  # Check if midi_input exists
+            while self.midi_input:
                 try:
                     for message in self.midi_input.iter_pending():
                         # Only update last_midi_message for note-related messages
@@ -287,10 +295,14 @@ class PianoVisualizer:
                             self.last_midi_message = f"{str(message)} ({note_name})"
                         
                         if message.type == 'note_on' and message.velocity > 0:
-                            self.midi_notes.add(message.note)
+                            note = message.note % 12  # Store just the note class (0-11)
+                            self.midi_notes.add(note)
+                            print(f"MIDI Note ON: {message.note} -> {note}")  # Debug print
                         elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
-                            self.midi_notes.discard(message.note)
-                    time.sleep(0.001)  # Small sleep to prevent CPU hogging
+                            note = message.note % 12
+                            self.midi_notes.discard(note)
+                            print(f"MIDI Note OFF: {message.note} -> {note}")  # Debug print
+                    time.sleep(0.001)
                 except Exception as e:
                     print(f"Error in MIDI listener: {e}")
                     self.last_midi_message = f"Error: {str(e)}"
