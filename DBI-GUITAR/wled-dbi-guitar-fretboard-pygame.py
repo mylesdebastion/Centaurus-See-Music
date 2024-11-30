@@ -117,6 +117,9 @@ class GuitarFretboardVisualizer:
         self.perform_mode = False
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.test_mode = False
+        self.fade_duration = 5.0  # 5 seconds
+        self.last_active_time = time.time()
+        self.chord_progression_enabled = True
 
     def create_fretboard_matrix(self) -> List[List[int]]:
         matrix = []
@@ -189,12 +192,24 @@ class GuitarFretboardVisualizer:
         colors = CHROMATIC_COLORS if self.color_mapping == "chromatic" else HARMONIC_COLORS
         color = colors[note]
 
-        # Active notes: 60% brightness
-        if (note % 12 in self.midi_notes) or (active and in_chord and self.space_pressed):
-            return tuple(int(c * 0.60) for c in color)
+        # Check if any notes are currently active
+        any_notes_active = bool(self.midi_notes) or (self.space_pressed and self.chord_progression_enabled)
         
-        # Inactive notes: 10% brightness
-        return tuple(int(c * 0.10) for c in color)
+        # Calculate fade factor
+        time_since_last_active = time.time() - self.last_active_time
+        if any_notes_active:
+            fade_factor = 1.0  # Full brightness when notes are active
+        else:
+            fade_factor = max(0, 1 - (time_since_last_active / self.fade_duration))
+
+        # Active notes: 60% brightness with fade
+        if (note % 12 in self.midi_notes) or (active and in_chord and self.space_pressed):
+            brightness = 0.60 * fade_factor
+            return tuple(int(c * brightness) for c in color)
+        
+        # Inactive notes: 10% brightness with fade
+        brightness = 0.10 * fade_factor
+        return tuple(int(c * brightness) for c in color)
 
     def create_wled_data(self, active_notes: List[Tuple[int, int]]) -> List[int]:
         led_data = []
@@ -379,10 +394,14 @@ class GuitarFretboardVisualizer:
     def run(self):
         print("Starting main loop...")
         running = True
-        self.update_key_notes()  # Initialize key notes
+        self.update_key_notes()
         try:
             while running:
                 running = self.handle_events()
+                
+                # Update last_active_time if any notes are active
+                if bool(self.midi_notes) or (self.space_pressed and self.chord_progression_enabled):
+                    self.last_active_time = time.time()
                 
                 self.screen.fill((0, 0, 0))
                 
@@ -398,10 +417,11 @@ class GuitarFretboardVisualizer:
                 pygame.display.flip()
                 self.clock.tick(FPS)
                 
-                if self.space_pressed and time.time() - self.last_chord_change > 5:
+                if (self.space_pressed and 
+                    self.chord_progression_enabled and 
+                    time.time() - self.last_chord_change > 5):
                     self.current_chord = (self.current_chord + 1) % len(progression["chords"])
                     self.last_chord_change = time.time()
-                    # Play the new chord
                     new_chord = progression["chords"][self.current_chord]
                     self.play_chord(new_chord["notes"])
         finally:
