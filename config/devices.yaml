@@ -1,1 +1,32 @@
- 
+users:
+  - user_id: nuc10_abc123
+    name: Piano NUC
+    instrument: piano
+    mqtt_broker: 192.168.1.100
+    mqtt_port: 1883
+    wled_devices:
+      - name: Piano Roll
+        ip: 192.168.1.101
+        port: 21324
+        num_leds: 144
+        instrument: piano
+        location: above_keys
+      - name: Piano Underglow
+        ip: 192.168.1.102
+        port: 21324
+        num_leds: 60
+        instrument: piano
+        location: under_piano
+        
+  - user_id: nuc11_def456
+    name: Guitar NUC
+    instrument: guitar
+    mqtt_broker: 192.168.1.100
+    mqtt_port: 1883
+    wled_devices:
+      - name: Guitar Fretboard
+        ip: 192.168.1.103
+        port: 21324
+        num_leds: 144
+        instrument: guitar
+        location: fretboard 
