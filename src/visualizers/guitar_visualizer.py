@@ -192,12 +192,13 @@ class GuitarVisualizer(BaseVisualizer):
         return True
 
     def setup_midi(self):
-        """Set up MIDI input"""
+        """Set up MIDI input with device switching"""
         try:
-            midi_devices = mido.get_input_names()
-            print(f"Available MIDI devices: {midi_devices}")
+            # Get fresh list of devices
+            self.midi_devices = mido.get_input_names()
+            print(f"\nAvailable MIDI devices: {self.midi_devices}")
             
-            if midi_devices:
+            if self.midi_devices:
                 # Close existing connection if any
                 if self.midi_input:
                     try:
@@ -208,10 +209,10 @@ class GuitarVisualizer(BaseVisualizer):
                         print("Error closing previous MIDI device")
 
                 # Update device index
-                self.current_midi_device_index = (self.current_midi_device_index + 1) % len(midi_devices)
-                device_name = midi_devices[self.current_midi_device_index]
+                self.current_midi_device_index = (self.current_midi_device_index + 1) % len(self.midi_devices)
+                device_name = self.midi_devices[self.current_midi_device_index]
                 
-                print(f"Attempting to connect to: {device_name} (Device {self.current_midi_device_index + 1} of {len(midi_devices)})")
+                print(f"Attempting to connect to: {device_name} (Device {self.current_midi_device_index + 1} of {len(self.midi_devices)})")
                 
                 self.midi_input = mido.open_input(device_name)
                 self.last_midi_message = f"Connected to: {device_name}"
