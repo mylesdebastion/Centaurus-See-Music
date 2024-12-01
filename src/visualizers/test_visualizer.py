@@ -5,7 +5,7 @@ import mido
 from typing import Set
 import threading
 from .base_visualizer import BaseVisualizer
-from ..communication.mqtt_client import MusicMQTTClient
+from src.communication.mqtt_client import MusicMQTTClient
 import uuid
 
 # Constants
@@ -46,6 +46,9 @@ class TestVisualizer(BaseVisualizer):
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, FPS)
         pygame.display.set_caption("Test Visualizer")
 
+        # Add input mode toggle
+        self.local_input_enabled = True  # Toggle for local MIDI input
+        
         # Initialize status messages
         self.mqtt_status = "MQTT: Not connected"
         self.last_midi_message = "No MIDI connected"
@@ -113,12 +116,14 @@ class TestVisualizer(BaseVisualizer):
         try:
             while self.midi_input:
                 for message in self.midi_input.iter_pending():
-                    if message.type == 'note_on' and message.velocity > 0:
-                        self.handle_local_note(message.note, True)
-                        print(f"Note ON: {message.note}")
-                    elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
-                        self.handle_local_note(message.note, False)
-                        print(f"Note OFF: {message.note}")
+                    # Only process MIDI input if local input is enabled
+                    if self.local_input_enabled:
+                        if message.type == 'note_on' and message.velocity > 0:
+                            self.handle_local_note(message.note, True)
+                            print(f"LOCAL MIDI Note ON: {message.note}")
+                        elif message.type == 'note_off' or (message.type == 'note_on' and message.velocity == 0):
+                            self.handle_local_note(message.note, False)
+                            print(f"LOCAL MIDI Note OFF: {message.note}")
                 time.sleep(0.001)
         except Exception as e:
             print(f"MIDI listener error: {e}")
@@ -128,20 +133,20 @@ class TestVisualizer(BaseVisualizer):
     def draw(self):
         """Implementation of abstract method from BaseVisualizer"""
         try:
-            # Clear screen first
             self.screen.fill((0, 0, 0))
-            
-            # Draw piano keys
             self.draw_piano()
             
-            # Draw info text with MQTT status
-            info_text = (f"{self.mqtt_status} | "
+            # Update status text to show input mode
+            mode_text = "LOCAL" if self.local_input_enabled else "REMOTE"
+            info_text = (f"Mode: {mode_text} | "
+                        f"{self.mqtt_status} | "
                         f"MIDI: {self.last_midi_message} | "
-                        f"Remote Sources: {len(self.remote_notes)} | "
-                        f"Press 'm' to rescan MIDI | 'q' to quit")
+                        f"Local Notes: {len(self.local_notes)} | "
+                        f"Remote Sources: {len(self.remote_notes)} "
+                        f"(Notes: {sum(len(notes) for notes in self.remote_notes.values())}) | "
+                        f"Press 't' to toggle mode | 'm' to rescan MIDI | 'q' to quit")
             self.draw_info(info_text)
             
-            # Update WLED
             led_data = self.create_wled_data()
             self.send_wled_data(led_data)
             
@@ -165,8 +170,8 @@ class TestVisualizer(BaseVisualizer):
                 note_class = note % 12
                 color = CHROMATIC_COLORS[note_class]
                 
-                # Brighten if note is active
-                if note in self.local_notes:
+                # Brighten if note is active (either local or remote)
+                if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
                     color = tuple(min(int(c * 1.5), 255) for c in color)
                 else:
                     color = tuple(int(c * 0.5) for c in color)
@@ -175,8 +180,13 @@ class TestVisualizer(BaseVisualizer):
                                (x, self.height - white_key_height,
                                 white_key_width - 1, white_key_height))
                 
-                # Draw note number
-                text = self.font.render(str(note), True, (0, 0, 0))
+                # Draw note number with source indicator
+                note_text = str(note)
+                if note in self.local_notes:
+                    note_text += "(L)"
+                elif any(note in notes for notes in self.remote_notes.values()):
+                    note_text += "(R)"
+                text = self.font.render(note_text, True, (0, 0, 0))
                 text_rect = text.get_rect(center=(x + white_key_width//2, 
                                                 self.height - white_key_height + 20))
                 self.screen.blit(text, text_rect)
@@ -194,8 +204,8 @@ class TestVisualizer(BaseVisualizer):
                 note_class = note % 12
                 color = CHROMATIC_COLORS[note_class]
                 
-                # Brighten if note is active
-                if note in self.local_notes:
+                # Brighten if note is active (either local or remote)
+                if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
                     color = tuple(min(int(c * 1.5), 255) for c in color)
                 else:
                     color = tuple(int(c * 0.3) for c in color)
@@ -204,8 +214,13 @@ class TestVisualizer(BaseVisualizer):
                                (x - black_key_width / 2, self.height - white_key_height,
                                 black_key_width, black_key_height))
                 
-                # Draw note number on black key
-                text = self.font.render(str(note), True, (255, 255, 255))
+                # Draw note number with source indicator
+                note_text = str(note)
+                if note in self.local_notes:
+                    note_text += "(L)"
+                elif any(note in notes for notes in self.remote_notes.values()):
+                    note_text += "(R)"
+                text = self.font.render(note_text, True, (255, 255, 255))
                 text_rect = text.get_rect(center=(x,
                                                 self.height - white_key_height + black_key_height//2))
                 self.screen.blit(text, text_rect)
@@ -219,8 +234,8 @@ class TestVisualizer(BaseVisualizer):
             note_class = note % 12
             color = CHROMATIC_COLORS[note_class]
             
-            # Brighten if note is active
-            if note in self.local_notes:
+            # Brighten if note is active (either local or remote)
+            if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
                 color = tuple(min(int(c * 1.5), 255) for c in color)
             else:
                 color = tuple(int(c * 0.1) for c in color)
@@ -249,6 +264,15 @@ class TestVisualizer(BaseVisualizer):
                 elif event.key == pygame.K_m:
                     print("Rescanning MIDI devices...")
                     self.setup_midi()
+                elif event.key == pygame.K_t:
+                    # Toggle between local and remote mode
+                    self.local_input_enabled = not self.local_input_enabled
+                    mode = "LOCAL" if self.local_input_enabled else "REMOTE"
+                    print(f"\nSwitched to {mode} input mode")
+                    # Clear local notes when switching modes
+                    if not self.local_input_enabled:
+                        self.local_notes.clear()
+                        self.mqtt.publish_notes(self.local_notes)  # Publish empty notes
         return True
 
     def _handle_remote_notes(self, data: dict):
@@ -256,9 +280,18 @@ class TestVisualizer(BaseVisualizer):
         source_id = data["client_id"]
         instrument = data["instrument"]
         notes = set(data["notes"])
+        old_notes = self.remote_notes.get(source_id, set())
+        
+        # Find new and removed notes
+        new_notes = notes - old_notes
+        removed_notes = old_notes - notes
+        
+        if new_notes:
+            print(f"REMOTE MQTT Note ON from {instrument} ({source_id}): {new_notes}")
+        if removed_notes:
+            print(f"REMOTE MQTT Note OFF from {instrument} ({source_id}): {removed_notes}")
+            
         self.remote_notes[source_id] = notes
-        print(f"\nMQTT: Received notes from {instrument} ({source_id}): {notes}")
-        # Update status to show last received message
         self.mqtt_status = f"MQTT: Last msg from {instrument} ({source_id})"
 
     def handle_local_note(self, note: int, is_on: bool):

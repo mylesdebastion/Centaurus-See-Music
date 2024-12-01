@@ -31,7 +31,7 @@ class MusicMQTTClient:
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         """Callback when connected to MQTT broker"""
-        if reason_code.is_successful:
+        if reason_code.value == 0:
             print(f"Connected to MQTT broker with result code: {reason_code}")
             self.connected = True
             # Resubscribe to topics
