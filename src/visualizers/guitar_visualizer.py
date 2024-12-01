@@ -14,7 +14,7 @@ SCREEN_HEIGHT = 400
 FPS = 30
 
 # WLED settings
-WLED_IP = "192.168.8.106"
+WLED_IP = "192.168.8.144"
 WLED_PORT = 21324
 
 # Guitar settings
