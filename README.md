@@ -38,3 +38,6 @@ Required packages:
 - mido
 - python-rtm
 
+```bash
+pip install pygame paho-mqtt mido python-rtmidi
+```
