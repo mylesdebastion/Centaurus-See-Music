@@ -184,6 +184,10 @@ class TestVisualizer(BaseVisualizer):
         black_key_width = white_key_width * 0.6
         black_key_height = white_key_height * 0.6
 
+        # Store key positions and notes for click detection
+        self.white_key_map = []  # List of (rect, note) tuples
+        self.black_key_map = []  # List of (rect, note) tuples
+
         # Draw white keys
         x = 0
         white_notes = [0, 2, 4, 5, 7, 9, 11]  # C, D, E, F, G, A, B
@@ -198,36 +202,25 @@ class TestVisualizer(BaseVisualizer):
                 is_remote = any(note in notes for notes in self.remote_notes.values())
                 
                 if is_local:
-                    # Local note: White
-                    color = (255, 255, 255)
+                    color = (255, 255, 255)  # Local note: White
                 elif is_remote:
-                    # Remote note: Colorful
-                    color = base_color
+                    color = base_color      # Remote note: Colorful
                 else:
-                    # Inactive note
-                    color = tuple(int(c * 0.3) for c in base_color)
+                    color = tuple(int(c * 0.3) for c in base_color)  # Inactive
 
-                pygame.draw.rect(self.screen, color,
-                               (x, self.height - white_key_height,
-                                white_key_width - 1, white_key_height))
+                key_rect = pygame.Rect(x, self.height - white_key_height,
+                                     white_key_width - 1, white_key_height)
+                pygame.draw.rect(self.screen, color, key_rect)
                 
-                # Draw note number with source indicator
-                note_text = str(note)
-                if note in self.local_notes:
-                    note_text += "(L)"
-                elif any(note in notes for notes in self.remote_notes.values()):
-                    note_text += "(R)"
-                text = self.font.render(note_text, True, (0, 0, 0))
-                text_rect = text.get_rect(center=(x + white_key_width//2, 
-                                                self.height - white_key_height + 20))
-                self.screen.blit(text, text_rect)
+                # Store key position and note for click detection
+                self.white_key_map.append((key_rect, note))
                 
-                white_key_positions.append(x)  # Store position for black keys
+                white_key_positions.append(x)
                 x += white_key_width
 
         # Draw black keys
         black_notes = [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
-        black_key_offsets = [0, 1, 3, 4, 5]  # Position offsets for black keys in an octave
+        black_key_offsets = [0, 1, 3, 4, 5]  # Position offsets for black keys
         for octave in range(NUM_OCTAVES):
             for offset in black_key_offsets:
                 x = white_key_positions[octave * 7 + offset] + white_key_width * 0.75
@@ -235,44 +228,59 @@ class TestVisualizer(BaseVisualizer):
                 note_class = note % 12
                 color = CHROMATIC_COLORS[note_class]
                 
-                # Brighten if note is active (either local or remote)
                 if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
                     color = tuple(min(int(c * 1.5), 255) for c in color)
                 else:
                     color = tuple(int(c * 0.3) for c in color)
 
-                pygame.draw.rect(self.screen, color,
-                               (x - black_key_width / 2, self.height - white_key_height,
-                                black_key_width, black_key_height))
+                key_rect = pygame.Rect(x - black_key_width / 2, 
+                                     self.height - white_key_height,
+                                     black_key_width, 
+                                     black_key_height)
+                pygame.draw.rect(self.screen, color, key_rect)
                 
-                # Draw note number with source indicator
-                note_text = str(note)
-                if note in self.local_notes:
-                    note_text += "(L)"
-                elif any(note in notes for notes in self.remote_notes.values()):
-                    note_text += "(R)"
-                text = self.font.render(note_text, True, (255, 255, 255))
-                text_rect = text.get_rect(center=(x,
-                                                self.height - white_key_height + black_key_height//2))
-                self.screen.blit(text, text_rect)
+                # Store black key position and note for click detection
+                self.black_key_map.append((key_rect, note))
+
+    def handle_mouse_click(self, pos):
+        """Handle mouse clicks on piano keys"""
+        # Check black keys first (they're on top)
+        for rect, note in self.black_key_map:
+            if rect.collidepoint(pos):
+                if note not in self.local_notes:
+                    self.handle_local_note(note, True)
+                    print(f"Clicked note ON: {note}")
+                else:
+                    self.handle_local_note(note, False)
+                    print(f"Clicked note OFF: {note}")
+                return
+
+        # Then check white keys
+        for rect, note in self.white_key_map:
+            if rect.collidepoint(pos):
+                if note not in self.local_notes:
+                    self.handle_local_note(note, True)
+                    print(f"Clicked note ON: {note}")
+                else:
+                    self.handle_local_note(note, False)
+                    print(f"Clicked note OFF: {note}")
+                return
 
     def create_wled_data(self) -> bytes:
-        """Create WLED data packet"""
+        """Create WLED data packet - one LED per note"""
         data = []
         for i in range(NUM_LEDS):
-            # Map LED position to MIDI note
-            note = START_NOTE + (i * TOTAL_NOTES) // NUM_LEDS
+            # Map LED position to MIDI note (one LED per note)
+            note = START_NOTE + i  # Direct 1:1 mapping
             note_class = note % 12
             color = CHROMATIC_COLORS[note_class]
             
             # Brighten if note is active (either local or remote)
             if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
-                color = tuple(min(int(c * 1.5), 255) for c in color)
+                data.extend(color)  # Full brightness for active notes
             else:
-                color = tuple(int(c * 0.1) for c in color)
-            
-            data.extend(color)
-
+                data.extend(tuple(int(c * 0.1) for c in color))  # Dimmed for inactive
+        
         return bytes(data)
 
     def send_wled_data(self, data: bytes):
@@ -296,14 +304,19 @@ class TestVisualizer(BaseVisualizer):
                     print("Rescanning MIDI devices...")
                     self.setup_midi()
                 elif event.key == pygame.K_t:
-                    # Toggle between local and remote mode
                     self.local_input_enabled = not self.local_input_enabled
                     mode = "LOCAL" if self.local_input_enabled else "REMOTE"
                     print(f"\nSwitched to {mode} input mode")
-                    # Clear local notes when switching modes
                     if not self.local_input_enabled:
                         self.local_notes.clear()
-                        self.mqtt.publish_notes(self.local_notes)  # Publish empty notes
+                        self.mqtt.publish_notes(self.local_notes)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                self.handle_mouse_click(event.pos)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                # Optional: clear all notes on mouse release
+                # self.local_notes.clear()
+                # self.mqtt.publish_notes(self.local_notes)
+                pass
         return True
 
     def _handle_remote_notes(self, data: dict):
