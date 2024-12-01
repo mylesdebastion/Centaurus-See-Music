@@ -5,6 +5,8 @@ import mido
 from typing import Set
 import threading
 from .base_visualizer import BaseVisualizer
+from ..communication.mqtt_client import MusicMQTTClient
+import uuid
 
 # Constants
 SCREEN_WIDTH = 1200
@@ -43,6 +45,37 @@ class TestVisualizer(BaseVisualizer):
         print("Initializing Test Visualizer...")
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, FPS)
         pygame.display.set_caption("Test Visualizer")
+
+        # Initialize status messages
+        self.mqtt_status = "MQTT: Not connected"
+        self.last_midi_message = "No MIDI connected"
+
+        # Generate unique client ID and set instrument type
+        self.client_id = f"test_{uuid.uuid4().hex[:8]}"
+        self.instrument_type = "piano"
+        
+        # MQTT setup
+        print("\nSetting up MQTT...")
+        try:
+            self.mqtt = MusicMQTTClient(self.client_id, self.instrument_type)
+            print(f"Created MQTT client with ID: {self.client_id}")
+            
+            if self.mqtt.connect():
+                self.mqtt_status = f"MQTT: Connected ({self.client_id})"
+                print("Successfully connected to MQTT broker")
+                # Subscribe to other instruments
+                for instrument in ['guitar', 'drums', 'bass', 'piano']:
+                    print(f"Subscribing to {instrument} messages...")
+                    self.mqtt.register_callback(instrument, self._handle_remote_notes)
+            else:
+                self.mqtt_status = "MQTT: Connection failed"
+                print("Failed to connect to MQTT broker")
+        except Exception as e:
+            self.mqtt_status = f"MQTT: Error - {str(e)}"
+            print(f"MQTT setup error: {e}")
+
+        # Initialize remote notes storage
+        self.remote_notes = {}  # Store notes from other clients
 
         # MIDI setup
         print("Setting up MIDI...")
@@ -101,8 +134,11 @@ class TestVisualizer(BaseVisualizer):
             # Draw piano keys
             self.draw_piano()
             
-            # Draw info text
-            info_text = f"MIDI: {self.last_midi_message} | Press 'm' to rescan MIDI devices | 'q' to quit"
+            # Draw info text with MQTT status
+            info_text = (f"{self.mqtt_status} | "
+                        f"MIDI: {self.last_midi_message} | "
+                        f"Remote Sources: {len(self.remote_notes)} | "
+                        f"Press 'm' to rescan MIDI | 'q' to quit")
             self.draw_info(info_text)
             
             # Update WLED
@@ -215,13 +251,34 @@ class TestVisualizer(BaseVisualizer):
                     self.setup_midi()
         return True
 
+    def _handle_remote_notes(self, data: dict):
+        """Handle remote notes from other instruments"""
+        source_id = data["client_id"]
+        instrument = data["instrument"]
+        notes = set(data["notes"])
+        self.remote_notes[source_id] = notes
+        print(f"\nMQTT: Received notes from {instrument} ({source_id}): {notes}")
+        # Update status to show last received message
+        self.mqtt_status = f"MQTT: Last msg from {instrument} ({source_id})"
+
+    def handle_local_note(self, note: int, is_on: bool):
+        """Handle local MIDI note and publish to MQTT"""
+        if is_on:
+            self.local_notes.add(note)
+        else:
+            self.local_notes.discard(note)
+        
+        # Publish updated notes via MQTT
+        self.mqtt.publish_notes(self.local_notes)
+
     def cleanup(self):
-        """Override cleanup to handle MIDI and WLED"""
+        """Override cleanup to handle MIDI, MQTT and WLED"""
         print("Cleaning up...")
         if self.midi_input:
             self.midi_input.close()
+        self.mqtt.disconnect()  # Add MQTT disconnect
         self.udp_socket.close()
-        super().cleanup()  # Call parent cleanup
+        super().cleanup()
         print("Cleanup complete.")
 
 if __name__ == "__main__":
