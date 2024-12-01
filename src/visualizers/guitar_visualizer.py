@@ -112,18 +112,24 @@ class GuitarVisualizer(BaseVisualizer):
                            (self.width, y))
             
             for fret in range(FRETS):
+                x = fret * fret_width + fret_width // 2
                 note = self.matrix[string][fret]
                 note_class = note % 12
-                color = CHROMATIC_COLORS[note_class]
+                base_color = CHROMATIC_COLORS[note_class]
                 
-                # Brighten if note is active
-                if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
-                    color = tuple(min(int(c * 1.5), 255) for c in color)
+                is_local = note in self.local_notes
+                is_remote = any(note in notes for notes in self.remote_notes.values())
+                
+                if is_local:
+                    # Local note: White
+                    color = (255, 255, 255)
+                elif is_remote:
+                    # Remote note: Colorful
+                    color = base_color
                 else:
-                    color = tuple(int(c * 0.3) for c in color)
+                    # Inactive note
+                    color = tuple(int(c * 0.3) for c in base_color)
 
-                # Draw note circle
-                x = fret * fret_width + fret_width // 2
                 pygame.draw.circle(self.screen, color, (x, y), 10)
 
     def create_wled_data(self) -> bytes:

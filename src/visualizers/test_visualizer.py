@@ -168,13 +168,20 @@ class TestVisualizer(BaseVisualizer):
             for i, white_note in enumerate(white_notes):
                 note = START_NOTE + octave * 12 + white_note
                 note_class = note % 12
-                color = CHROMATIC_COLORS[note_class]
+                base_color = CHROMATIC_COLORS[note_class]
                 
-                # Brighten if note is active (either local or remote)
-                if note in self.local_notes or any(note in notes for notes in self.remote_notes.values()):
-                    color = tuple(min(int(c * 1.5), 255) for c in color)
+                is_local = note in self.local_notes
+                is_remote = any(note in notes for notes in self.remote_notes.values())
+                
+                if is_local:
+                    # Local note: White
+                    color = (255, 255, 255)
+                elif is_remote:
+                    # Remote note: Colorful
+                    color = base_color
                 else:
-                    color = tuple(int(c * 0.5) for c in color)
+                    # Inactive note
+                    color = tuple(int(c * 0.3) for c in base_color)
 
                 pygame.draw.rect(self.screen, color,
                                (x, self.height - white_key_height,
