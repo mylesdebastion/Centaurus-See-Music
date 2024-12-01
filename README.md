@@ -93,7 +93,24 @@ This project allows multiple musicians to see each other's playing in real-time 
 
 ### Troubleshooting Common Issues
 
-1. MIDI Device Not Detected
+1. PowerShell Virtual Environment Activation Error
+   ```powershell
+   # If you see "running scripts is disabled on this system" error:
+   
+   # Option 1: Allow for current session only
+   Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+   
+   # Option 2: Allow for your user account (recommended)
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   
+   # Option 3: Allow system-wide (requires admin rights)
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
+   
+   # Then try activating again:
+   .\venv\Scripts\Activate.ps1
+   ```
+
+2. MIDI Device Not Detected
    ```powershell
    # Windows: Check MIDI devices
    midiInGetNumDevs
@@ -102,13 +119,13 @@ This project allows multiple musicians to see each other's playing in real-time 
    aconnect -l
    ```
 
-2. WLED Connection Issues
+3. WLED Connection Issues
    ```powershell
    # Test WLED connection
    ping your-wled-ip-address
    ```
 
-3. Python Environment Problems
+4. Python Environment Problems
    ```powershell
    # Verify virtual environment
    pip list
@@ -284,3 +301,72 @@ The system uses the following MQTT topic structure:
 - Status: `centaurus/music/status/<instrument>/<client_id>`
 
 Each client automatically subscribes to all instrument channels for cross-instrument visualization.
+
+## Running Multiple Instances for Testing
+
+### Setup
+1. First, activate your virtual environment:
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   ```
+
+2. Make sure MQTT broker is running:
+   ```powershell
+   # Check if Mosquitto is running (Windows)
+   net start mosquitto
+   
+   # If not running, start it:
+   net start mosquitto
+   ```
+
+### Running Instances
+1. Open two separate PowerShell windows
+
+2. In each window, navigate to your project directory and activate the virtual environment:
+   ```powershell
+   cd path/to/Centaurus-See-Music
+   .\venv\Scripts\Activate.ps1
+   ```
+
+3. Start the first instance:
+   ```powershell
+   # In first PowerShell window
+   python -m src.visualizers.test_visualizer
+   ```
+
+4. Start the second instance:
+   ```powershell
+   # In second PowerShell window
+   python -m src.visualizers.test_visualizer
+   ```
+
+### Testing Communication
+1. In the second instance:
+   - Press 't' to switch to REMOTE mode
+   - You should see "(R)" indicator showing it's in remote mode
+
+2. In the first instance:
+   - Play notes (it stays in LOCAL mode by default)
+   - You should see "(L)" indicator with your notes
+
+3. Verify:
+   - First window shows notes with "(L)" indicator
+   - Second window shows same notes with "(R)" indicator
+   - Both visualizers should display the same notes
+
+### Troubleshooting
+- If instances can't communicate:
+  ```powershell
+  # Check MQTT broker status
+  netstat -an | findstr "1883"
+  
+  # Restart MQTT if needed
+  net stop mosquitto
+  net start mosquitto
+  ```
+
+- If MIDI isn't detected:
+  ```powershell
+  # List MIDI devices
+  python -c "import mido; print(mido.get_input_names())"
+  ```

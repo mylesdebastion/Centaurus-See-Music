@@ -1,4 +1,5 @@
-# Setup script for Centaurus-See-Music
+# setup.ps1
+
 Write-Host "Starting Centaurus-See-Music setup..." -ForegroundColor Cyan
 
 # Check if Python is installed
@@ -11,27 +12,15 @@ try {
     exit 1
 }
 
-# Check if pip is installed
-try {
-    $pipVersion = pip --version
-    Write-Host "Found pip: $pipVersion" -ForegroundColor Green
-} catch {
-    Write-Host "pip not found! Please install pip" -ForegroundColor Red
-    exit 1
-}
-
-# Create and activate virtual environment
-Write-Host "`nSetting up virtual environment..." -ForegroundColor Cyan
-if (Test-Path "venv") {
-    Write-Host "Virtual environment already exists" -ForegroundColor Yellow
-} else {
+# Create virtual environment if it doesn't exist
+if (-not (Test-Path "venv")) {
+    Write-Host "`nCreating virtual environment..." -ForegroundColor Cyan
     python -m venv venv
-    Write-Host "Virtual environment created" -ForegroundColor Green
 }
 
 # Activate virtual environment
-Write-Host "`nActivating virtual environment..." -ForegroundColor Cyan
 try {
+    Write-Host "`nActivating virtual environment..." -ForegroundColor Cyan
     .\venv\Scripts\Activate.ps1
     Write-Host "Virtual environment activated" -ForegroundColor Green
 } catch {
@@ -40,9 +29,12 @@ try {
     exit 1
 }
 
-# Install requirements
+# Install dependencies with binary preference
 Write-Host "`nInstalling dependencies..." -ForegroundColor Cyan
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+pip install --only-binary :all: pygame==2.5.2
+pip install mido python-rtmidi wled paho-mqtt
+pip install --only-binary :all: numpy
 
 # Check for MIDI drivers
 Write-Host "`nChecking MIDI drivers..." -ForegroundColor Cyan
@@ -79,12 +71,6 @@ try {
 # Print success message and next steps
 Write-Host "`nSetup completed!" -ForegroundColor Green
 Write-Host "`nNext steps:" -ForegroundColor Cyan
-Write-Host "1. Update config.py with your WLED device IP address" -ForegroundColor White
-Write-Host "2. Install loopMIDI if not already installed" -ForegroundColor White
-Write-Host "3. Connect your MIDI device" -ForegroundColor White
-Write-Host "4. Run the visualizer:" -ForegroundColor White
-Write-Host "   python sketches/wled-guitar-fretboard-pygame.py" -ForegroundColor Yellow
-
-# Keep the window open
-Write-Host "`nPress any key to exit..." -ForegroundColor Gray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+Write-Host "1. Update config.py with your settings" -ForegroundColor Yellow
+Write-Host "2. Run 'start.ps1' to launch the visualizer" -ForegroundColor Yellow
+Write-Host "3. Press 't' to toggle between LOCAL and REMOTE modes" -ForegroundColor Yellow
