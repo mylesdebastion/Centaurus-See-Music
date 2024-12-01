@@ -53,6 +53,11 @@ class TestVisualizer(BaseVisualizer):
         self.mqtt_status = "MQTT: Not connected"
         self.last_midi_message = "No MIDI connected"
 
+        # MIDI device management
+        self.midi_devices = mido.get_input_names()
+        self.current_midi_device_index = -1
+        self.midi_input = None
+
         # Generate unique client ID and set instrument type
         self.client_id = f"test_{uuid.uuid4().hex[:8]}"
         self.instrument_type = "piano"
@@ -79,11 +84,10 @@ class TestVisualizer(BaseVisualizer):
 
         # Initialize remote notes storage
         self.remote_notes = {}  # Store notes from other clients
+        self.local_notes = set()  # Store local notes
 
         # MIDI setup
         print("Setting up MIDI...")
-        self.midi_input = None
-        self.last_midi_message = "No MIDI connected"
         self.setup_midi()
 
         # WLED setup
@@ -92,23 +96,43 @@ class TestVisualizer(BaseVisualizer):
         print("Initialization complete.")
 
     def setup_midi(self):
-        """Set up MIDI input"""
+        """Set up MIDI input with device switching"""
         try:
-            midi_devices = mido.get_input_names()
-            print(f"Available MIDI devices: {midi_devices}")
+            # Get fresh list of devices
+            self.midi_devices = mido.get_input_names()
+            print(f"\nAvailable MIDI devices: {self.midi_devices}")
             
-            if midi_devices:
-                self.midi_input = mido.open_input(midi_devices[0])
-                self.last_midi_message = f"Connected to: {midi_devices[0]}"
-                print(f"Connected to MIDI device: {midi_devices[0]}")
+            if self.midi_devices:
+                # Close existing connection if any
+                if self.midi_input:
+                    try:
+                        self.midi_input.close()
+                        self.midi_input = None
+                        time.sleep(0.1)  # Give it time to close
+                    except:
+                        print("Error closing previous MIDI device")
+
+                # Update device index
+                self.current_midi_device_index = (self.current_midi_device_index + 1) % len(self.midi_devices)
+                device_name = self.midi_devices[self.current_midi_device_index]
+                
+                print(f"Attempting to connect to: {device_name} (Device {self.current_midi_device_index + 1} of {len(self.midi_devices)})")
+                
+                self.midi_input = mido.open_input(device_name)
+                self.last_midi_message = f"Connected to: {device_name}"
+                print(f"Successfully connected to MIDI device: {device_name}")
                 
                 # Start MIDI listener thread
                 midi_thread = threading.Thread(target=self.midi_listener, daemon=True)
                 midi_thread.start()
             else:
                 print("No MIDI devices found")
+                self.last_midi_message = "No devices found"
+                self.current_midi_device_index = -1
         except Exception as e:
             print(f"MIDI setup error: {e}")
+            self.last_midi_message = f"Error: {str(e)}"
+            self.current_midi_device_index = -1
 
     def midi_listener(self):
         """Listen for MIDI messages"""
