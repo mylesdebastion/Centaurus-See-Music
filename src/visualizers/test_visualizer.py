@@ -11,10 +11,16 @@ SCREEN_WIDTH = 1200
 SCREEN_HEIGHT = 400
 FPS = 30
 
-# WLED settings - Update this IP to match your WLED device
+# WLED settings
 WLED_IP = "192.168.8.106"
 WLED_PORT = 21324
 NUM_LEDS = 144
+
+# Piano settings
+START_NOTE = 36  # Start from C2
+NUM_OCTAVES = 4
+NOTES_PER_OCTAVE = 12
+TOTAL_NOTES = NUM_OCTAVES * NOTES_PER_OCTAVE
 
 # Color mappings
 CHROMATIC_COLORS = [
@@ -88,29 +94,43 @@ class TestVisualizer(BaseVisualizer):
 
     def draw(self):
         """Implementation of abstract method from BaseVisualizer"""
-        self.draw_piano()
-        self.draw_info()
-        
-        # Update WLED
-        led_data = self.create_wled_data()
-        self.send_wled_data(led_data)
+        try:
+            # Clear screen first
+            self.screen.fill((0, 0, 0))
+            
+            # Draw piano keys
+            self.draw_piano()
+            
+            # Draw info text
+            info_text = f"MIDI: {self.last_midi_message} | Press 'm' to rescan MIDI devices | 'q' to quit"
+            self.draw_info(info_text)
+            
+            # Update WLED
+            led_data = self.create_wled_data()
+            self.send_wled_data(led_data)
+            
+        except Exception as e:
+            print(f"Error in draw method: {e}")
 
     def draw_piano(self):
         """Draw piano visualization"""
-        white_key_width = self.width // 28  # 4 octaves * 7 white keys
+        white_key_width = self.width // (NUM_OCTAVES * 7)  # 7 white keys per octave
         white_key_height = self.height * 0.8
         black_key_width = white_key_width * 0.6
         black_key_height = white_key_height * 0.6
 
         # Draw white keys
         x = 0
-        for octave in range(4):  # 4 octaves
-            for key in [0, 2, 4, 5, 7, 9, 11]:  # White key positions
-                note = octave * 12 + key
-                color = CHROMATIC_COLORS[key]
+        white_notes = [0, 2, 4, 5, 7, 9, 11]  # C, D, E, F, G, A, B
+        white_key_positions = []  # Track positions for black keys
+        for octave in range(NUM_OCTAVES):
+            for i, white_note in enumerate(white_notes):
+                note = START_NOTE + octave * 12 + white_note
+                note_class = note % 12
+                color = CHROMATIC_COLORS[note_class]
                 
                 # Brighten if note is active
-                if note in self.local_notes:  # Using BaseVisualizer's local_notes
+                if note in self.local_notes:
                     color = tuple(min(int(c * 1.5), 255) for c in color)
                 else:
                     color = tuple(int(c * 0.5) for c in color)
@@ -118,39 +138,53 @@ class TestVisualizer(BaseVisualizer):
                 pygame.draw.rect(self.screen, color,
                                (x, self.height - white_key_height,
                                 white_key_width - 1, white_key_height))
+                
+                # Draw note number
+                text = self.font.render(str(note), True, (0, 0, 0))
+                text_rect = text.get_rect(center=(x + white_key_width//2, 
+                                                self.height - white_key_height + 20))
+                self.screen.blit(text, text_rect)
+                
+                white_key_positions.append(x)  # Store position for black keys
                 x += white_key_width
 
         # Draw black keys
-        x = 0
-        for octave in range(4):
-            for i, key in enumerate([0, 2, 4, 5, 7, 9, 11]):
-                if i < 6:  # Don't draw after last white key
-                    if key in [0, 5]:  # After C and F
-                        if i < 5:  # Don't draw after last white key
-                            note = octave * 12 + key + 1
-                            color = CHROMATIC_COLORS[(key + 1) % 12]
-                            
-                            # Brighten if note is active
-                            if note in self.local_notes:  # Using BaseVisualizer's local_notes
-                                color = tuple(min(int(c * 1.5), 255) for c in color)
-                            else:
-                                color = tuple(int(c * 0.3) for c in color)
+        black_notes = [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
+        black_key_offsets = [0, 1, 3, 4, 5]  # Position offsets for black keys in an octave
+        for octave in range(NUM_OCTAVES):
+            for offset in black_key_offsets:
+                x = white_key_positions[octave * 7 + offset] + white_key_width * 0.75
+                note = START_NOTE + octave * 12 + black_notes[black_key_offsets.index(offset)]
+                note_class = note % 12
+                color = CHROMATIC_COLORS[note_class]
+                
+                # Brighten if note is active
+                if note in self.local_notes:
+                    color = tuple(min(int(c * 1.5), 255) for c in color)
+                else:
+                    color = tuple(int(c * 0.3) for c in color)
 
-                            pygame.draw.rect(self.screen, color,
-                                           (x + white_key_width - black_key_width/2,
-                                            self.height - white_key_height,
-                                            black_key_width, black_key_height))
-                x += white_key_width
+                pygame.draw.rect(self.screen, color,
+                               (x - black_key_width / 2, self.height - white_key_height,
+                                black_key_width, black_key_height))
+                
+                # Draw note number on black key
+                text = self.font.render(str(note), True, (255, 255, 255))
+                text_rect = text.get_rect(center=(x,
+                                                self.height - white_key_height + black_key_height//2))
+                self.screen.blit(text, text_rect)
 
     def create_wled_data(self) -> bytes:
         """Create WLED data packet"""
         data = []
         for i in range(NUM_LEDS):
-            note_index = (i * 12) // NUM_LEDS
-            color = CHROMATIC_COLORS[note_index]
+            # Map LED position to MIDI note
+            note = START_NOTE + (i * TOTAL_NOTES) // NUM_LEDS
+            note_class = note % 12
+            color = CHROMATIC_COLORS[note_class]
             
-            # Brighten if any note in this section is active
-            if any(note % 12 == note_index for note in self.local_notes):
+            # Brighten if note is active
+            if note in self.local_notes:
                 color = tuple(min(int(c * 1.5), 255) for c in color)
             else:
                 color = tuple(int(c * 0.1) for c in color)
