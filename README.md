@@ -370,3 +370,42 @@ Each client automatically subscribes to all instrument channels for cross-instru
   # List MIDI devices
   python -c "import mido; print(mido.get_input_names())"
   ```
+
+## Visualizers
+
+### Main Visualizers
+- `test_visualizer.py` - Piano roll visualizer (TODO: rename to piano_visualizer.py)
+  - Controls piano LED strip (192.168.8.144)
+  - Shows chromatic colors
+  - Supports local and remote modes
+
+- `guitar_visualizer.py` - Guitar fretboard visualizer
+  - Controls guitar LED strip (192.168.8.144)
+  - Shows fretboard layout
+  - Supports local and remote modes
+
+### Optional Display
+- `6x25_matrix_visualizer.py` - Secondary guitar display
+  - Controls matrix LED panel (192.168.8.145)
+  - Always in remote mode
+  - 6x25 grid layout
+  - Can be started alongside main visualizers for additional display
+
+## Startup Instructions
+
+### Quick Start
+1. Run `start_centaurus.bat` to launch the visualizer
+2. The program will auto-start with Piano + Guitar Combo mode after 5 seconds
+3. You can select options 1-5 during the countdown:
+   - 1: Single Piano Visualizer (test_visualizer.py)
+   - 2: Single Guitar Fretboard Visualizer (guitar_visualizer.py)
+   - 3: Two Piano Visualizers (Local + Remote)
+   - 4: Two Guitar Visualizers (Local + Remote)
+   - 5: Piano + Guitar Combo (Guitar Remote) - Default
+
+### Optional Matrix Display
+To add the matrix display:
+```powershell
+python -m src.visualizers.6x25_matrix_visualizer
+```
+This can be run alongside any of the main visualizer modes.
