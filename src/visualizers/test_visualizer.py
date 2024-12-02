@@ -17,9 +17,11 @@ FPS = 30
 WLED_IP = "192.168.8.106"
 WLED_PORT = 21324
 NUM_LEDS = 144
+LED_OFFSET = 8  # Skip first 7 LEDs
+LED_NOTE_OFFSET = 5  # LED strip starts 2 notes ahead (C maps to position of D)
 
 # Piano settings
-START_NOTE = 36  # Start from C2
+START_NOTE = 36  # Keep starting at C2 for visualizer
 NUM_OCTAVES = 4
 NOTES_PER_OCTAVE = 12
 TOTAL_NOTES = NUM_OCTAVES * NOTES_PER_OCTAVE
@@ -267,11 +269,17 @@ class TestVisualizer(BaseVisualizer):
                 return
 
     def create_wled_data(self) -> bytes:
-        """Create WLED data packet - one LED per note"""
+        """Create WLED data packet - one LED per note, with offset"""
         data = []
-        for i in range(NUM_LEDS):
-            # Map LED position to MIDI note (one LED per note)
-            note = START_NOTE + i  # Direct 1:1 mapping
+        
+        # Add blank LEDs for physical offset
+        for _ in range(LED_OFFSET):
+            data.extend((0, 0, 0))  # Dark LEDs for offset
+            
+        # Add note LEDs with note offset compensation
+        for i in range(NUM_LEDS - LED_OFFSET):
+            # Adjust the note mapping to account for LED offset
+            note = START_NOTE + ((i + LED_NOTE_OFFSET) % TOTAL_NOTES)  # Wrap around to keep mapping
             note_class = note % 12
             color = CHROMATIC_COLORS[note_class]
             
