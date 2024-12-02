@@ -9,9 +9,34 @@ try {
     Write-Host "3. Two Piano Visualizers (Local + Remote)" -ForegroundColor Yellow
     Write-Host "4. Two Guitar Visualizers (Local + Remote)" -ForegroundColor Yellow
     Write-Host "5. Piano + Guitar Combo (Guitar Remote)" -ForegroundColor Green
-    Write-Host "Choose option (1-5):" -ForegroundColor Green
+    Write-Host "Choose option (1-5) or wait 5 seconds for auto-start:" -ForegroundColor Green
 
-    $choice = Read-Host
+    # Start timeout counter
+    $timeoutSeconds = 5
+    $choice = $null
+    $startTime = Get-Date
+
+    while (((Get-Date) - $startTime).TotalSeconds -lt $timeoutSeconds) {
+        if ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            if ($key.KeyChar -match '[1-5]') {
+                $choice = $key.KeyChar
+                break
+            }
+        }
+        Start-Sleep -Milliseconds 100
+        
+        # Show countdown
+        $remainingTime = [Math]::Ceiling($timeoutSeconds - ((Get-Date) - $startTime).TotalSeconds)
+        Write-Host "`rAuto-starting in $remainingTime seconds... " -NoNewline -ForegroundColor Yellow
+    }
+    Write-Host "" # New line after countdown
+
+    # If no choice made, default to option 5
+    if (-not $choice) {
+        $choice = "5"
+        Write-Host "No selection made, starting Piano + Guitar Combo..." -ForegroundColor Green
+    }
 
     switch ($choice) {
         "1" { 
