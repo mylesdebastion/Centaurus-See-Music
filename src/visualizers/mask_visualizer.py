@@ -7,6 +7,7 @@ import threading
 from .base_visualizer import BaseVisualizer
 from src.communication.mqtt_client import MusicMQTTClient
 import uuid
+import math
 
 # Constants
 SCREEN_WIDTH = 800
@@ -70,6 +71,17 @@ class MaskVisualizer(BaseVisualizer):
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print("Initialization complete.")
 
+        if self.mqtt.connect():
+            self.mqtt_status = f"MQTT: Connected ({self.client_id})"
+            print("Successfully connected to MQTT broker")
+            # Subscribe to other instruments
+            for instrument in ['guitar', 'drums', 'bass', 'piano']:
+                print(f"Subscribing to {instrument} messages...")
+                self.mqtt.register_callback(instrument, self.handle_remote_notes)
+        else:
+            self.mqtt_status = "MQTT: Connection failed"
+            print("Failed to connect to MQTT broker")
+
     def setup_midi(self):
         """Set up MIDI input with device switching"""
         try:
@@ -113,17 +125,25 @@ class MaskVisualizer(BaseVisualizer):
 
     def draw_hex_segment(self, center_x, center_y, segment_index, intensity):
         """Draw a hexagonal LED segment"""
-        radius = 30
-        angle = segment_index * (360 / NUM_SEGMENTS)
+        radius = 50  # Increased radius for better visibility
+        angle_offset = -90  # Start from top
+        angle = angle_offset + segment_index * (360 / NUM_SEGMENTS)
         color = SEGMENT_COLORS[segment_index]
         
-        # Calculate position based on hex layout
-        x = center_x + radius * 2 * pygame.math.Vector2().from_polar((1, angle))[0]
-        y = center_y + radius * 2 * pygame.math.Vector2().from_polar((1, angle))[1]
+        # Calculate hex points
+        points = []
+        for i in range(6):
+            point_angle = math.radians(angle + i * 60)  # Convert to radians
+            x = center_x + radius * math.cos(point_angle)
+            y = center_y + radius * math.sin(point_angle)
+            points.append((int(x), int(y)))
         
-        # Draw segment with intensity
+        # Draw filled hexagon with intensity
         adjusted_color = tuple(int(c * intensity) for c in color)
-        pygame.draw.circle(self.screen, adjusted_color, (int(x), int(y)), radius)
+        pygame.draw.polygon(self.screen, adjusted_color, points)
+        
+        # Draw outline
+        pygame.draw.polygon(self.screen, (100, 100, 100), points, 1)
 
     def create_wled_data(self):
         """Create LED data for WLED"""
@@ -157,13 +177,27 @@ class MaskVisualizer(BaseVisualizer):
                 intensity = min(1.0, segment_notes / 6)
                 self.draw_hex_segment(center_x, center_y, segment, intensity)
             
-            # Update status text
+            # Draw status bar at bottom
             mode_text = "LOCAL" if self.local_input_enabled else "REMOTE"
-            info_text = (f"Mode: {mode_text} | "
+            info_text = (f"Mode [T]: {mode_text} | "
                         f"{self.mqtt_status} | "
-                        f"MIDI: {self.last_midi_message} | "
-                        f"Press 't' to toggle mode | 'm' to rescan MIDI | 'q' to quit")
-            self.draw_info(info_text)
+                        f"MIDI [M]: {self.last_midi_message} | "
+                        f"Press 'Q' to quit")
+            
+            # Create status text surface
+            text_surface = self.font.render(info_text, True, (200, 200, 200))
+            text_rect = text_surface.get_rect()
+            text_rect.centerx = SCREEN_WIDTH // 2
+            text_rect.bottom = SCREEN_HEIGHT - 10
+            
+            # Draw semi-transparent background for text
+            bg_rect = text_rect.inflate(20, 10)
+            bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(bg_surface, (0, 0, 0, 128), bg_surface.get_rect())
+            self.screen.blit(bg_surface, bg_rect)
+            
+            # Draw text
+            self.screen.blit(text_surface, text_rect)
             
             # Update WLED
             led_data = self.create_wled_data()
