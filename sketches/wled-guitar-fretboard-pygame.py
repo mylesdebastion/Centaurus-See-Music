@@ -10,7 +10,7 @@ import threading
 # pip install python-rtmidi
 
 # WLED Controller settings
-WLED_IP = "192.168.0.113"
+WLED_IP = "192.168.8.144"
 WLED_PORT = 21324  # Default WLED UDP port
 
 # Guitar fretboard settings

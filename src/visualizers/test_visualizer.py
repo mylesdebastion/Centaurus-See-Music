@@ -17,8 +17,8 @@ FPS = 30
 WLED_IP = "192.168.8.106"
 WLED_PORT = 21324
 NUM_LEDS = 144
-LED_OFFSET = 8  # Skip first 7 LEDs
-LED_NOTE_OFFSET = 5  # LED strip starts 2 notes ahead (C maps to position of D)
+LED_OFFSET = 1  # Skip first 7 LEDs
+LED_NOTE_OFFSET = -7  # LED strip starts 2 notes ahead (C maps to position of D)
 
 # Piano settings
 START_NOTE = 36  # Keep starting at C2 for visualizer

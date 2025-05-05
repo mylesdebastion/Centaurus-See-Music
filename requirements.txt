@@ -1,7 +1,9 @@
 # Core dependencies
+setuptools
+wheel
 pygame==2.6.1
 mido==1.3.0
 python-rtmidi==1.5.8
 wled==0.16.0
-numpy==1.24.3
-paho-mqtt==1.6.1
+numpy==2.1.3
+paho-mqtt==2.1.0
